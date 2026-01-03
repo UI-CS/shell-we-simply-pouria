@@ -8,6 +8,7 @@
 #define MAX_LINE 20
 
 int main(void) {
+    char *args[MAX_LINE/2 + 1];
     char input_buffer[MAX_LINE];
     int should_run = 1;
 
@@ -15,26 +16,42 @@ int main(void) {
         printf("uinxsh> ");
         fflush(stdout);
 
-        // read
-        if (fgets(input_buffer, MAX_LINE, stdin) == NULL) {
-            break;
-        }
-
-        // remove  newline
+        if (fgets(input_buffer, MAX_LINE, stdin) == NULL) break;
         input_buffer[strcspn(input_buffer, "\n")] = 0;
+        if (strlen(input_buffer) == 0) continue;
 
-        // skip empty input
-        if (strlen(input_buffer) == 0) {
+        // parser
+        int i = 0;
+        char *token = strtok(input_buffer, " ");
+        while (token != NULL) {
+            args[i++] = token;
+            token = strtok(NULL, " ");
+        }
+        args[i] = NULL; // I don't really get this
+
+        // i'm just gonna procrastinate this for now as Maduro's government has fell
+        if (strcmp(args[0], "exit") == 0) {
+            should_run = 0;
             continue;
         }
 
-        printf("You entered: %s\n", input_buffer);
+        // executor
+        pid_t pid = fork();
 
-        // i'm too sleepy right now to work on this part...farda ishalla
-        if (strcmp(input_buffer, "exit") == 0) {
-            should_run = 0;
+        if (pid < 0) {
+            perror("Fork failed");
+        }
+        else if (pid == 0) {
+            // Child Process
+            if (execvp(args[0], args) == -1) {
+                printf("Command not found: %s\n", args[0]);
+                exit(1);
+            }
+        }
+        else {
+            // Parent Process: wait for the child to finish
+            wait(NULL);
         }
     }
-
     return 0;
 }
