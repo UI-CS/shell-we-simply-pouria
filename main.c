@@ -5,16 +5,20 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#define MAX_LINE 80 /* Increased from 20 for practical use */
+#define MAX_LINE 80
 
 int main(void) {
     char *args[MAX_LINE/2 + 1];
+    char *args_pipe[MAX_LINE/2 + 1]; // args for the second command in a pipe
     char input_buffer[MAX_LINE];
-    char history_buffer[MAX_LINE]; // last command
-    int has_history = 0;           // toggle so I won;t screw things up
+    char history_buffer[MAX_LINE];
+    int has_history = 0;
     int should_run = 1;
 
     while (should_run) {
+        // ZOMBIE CLEANUP: Reap background processes that finished
+        while (waitpid(-1, NULL, WNOHANG) > 0);
+
         printf("uinxsh> ");
         fflush(stdout);
 
@@ -27,11 +31,9 @@ int main(void) {
                 printf("No commands in history.\n");
                 continue;
             }
-            // overwrite current input with history and priint it
             strcpy(input_buffer, history_buffer);
             printf("%s\n", input_buffer);
         } else {
-            // Save this valid command for next time
             strcpy(history_buffer, input_buffer);
             has_history = 1;
         }
@@ -45,18 +47,35 @@ int main(void) {
             args[i++] = token;
             token = strtok(NULL, " ");
         }
-
         args[i] = NULL;
 
-        // Commands
+        if (args[0] == NULL) continue;
 
-        // exit
+        // CHECK FOR (&)
+        int background = 0;
+        if (i > 0 && strcmp(args[i-1], "&") == 0) {
+            background = 1;
+            args[i-1] = NULL; // remove & from args
+            i--; // decrement count
+        }
+
+        // CHECK FOR (|)
+        int pipe_idx = -1;
+        for (int j = 0; j < i; j++) {
+            if (strcmp(args[j], "|") == 0) {
+                pipe_idx = j;
+                break;
+            }
+        }
+
+
+
+
         if (strcmp(args[0], "exit") == 0) {
             should_run = 0;
             continue;
         }
 
-        // cd
         if (strcmp(args[0], "cd") == 0) {
             if (args[1] == NULL) {
                 fprintf(stderr, "uinxsh: expected argument to \"cd\"\n");
@@ -68,7 +87,6 @@ int main(void) {
             continue;
         }
 
-        // pwd
         if (strcmp(args[0], "pwd") == 0) {
             char cwd[1024];
             if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -79,22 +97,82 @@ int main(void) {
             continue;
         }
 
-        // executor
-        pid_t pid = fork();
 
-        if (pid < 0) {
-            perror("Fork failed");
-        }
-        else if (pid == 0) {
-            // child
-            if (execvp(args[0], args) == -1) {
-                printf("Command not found: %s\n", args[0]);
-                exit(1);
+
+
+
+        if (pipe_idx != -1) {
+            // pipe
+            args[pipe_idx] = NULL;
+
+
+            int pipe_arg_count = 0;
+            for(int j = pipe_idx + 1; args[j] != NULL; j++) {
+                args_pipe[pipe_arg_count++] = args[j];
+            }
+            args_pipe[pipe_arg_count] = NULL;
+
+            int pipefd[2];
+            if (pipe(pipefd) == -1) {
+                perror("pipe failed");
+                continue;
+            }
+
+            pid_t p1 = fork();
+            if (p1 < 0) {
+                perror("fork failed");
+            } else if (p1 == 0) {
+                // child 1
+                close(pipefd[0]);
+                dup2(pipefd[1], STDOUT_FILENO);
+                close(pipefd[1]);
+                if (execvp(args[0], args) == -1) {
+                    perror("execvp child 1");
+                    exit(1);
+                }
+            }
+
+            pid_t p2 = fork();
+            if (p2 < 0) {
+                perror("fork failed");
+            } else if (p2 == 0) {
+                // child 2
+                close(pipefd[1]);
+                dup2(pipefd[0], STDIN_FILENO);
+                close(pipefd[0]);
+                if (execvp(args_pipe[0], args_pipe) == -1) {
+                    perror("execvp child 2");
+                    exit(1);
+                }
+            }
+
+            // parent
+            close(pipefd[0]);
+            close(pipefd[1]);
+
+            if (!background) {
+                waitpid(p1, NULL, 0);
+                waitpid(p2, NULL, 0);
             }
         }
         else {
-            // parent
-            wait(NULL);
+            pid_t pid = fork();
+            if (pid < 0) {
+                perror("Fork failed");
+            }
+            else if (pid == 0) {
+                if (execvp(args[0], args) == -1) {
+                    printf("Command not found: %s\n", args[0]);
+                    exit(1);
+                }
+            }
+            else {
+                if (!background) {
+                    wait(NULL);
+                } else {
+                    printf("[Running in background] PID: %d\n", pid);
+                }
+            }
         }
     }
 
