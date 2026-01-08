@@ -15,14 +15,12 @@ int main(void) {
     int has_history = 0;
     int should_run = 1;
 
-    // --- HARDCODE FIX: Capture startup directory ---
-    // We assume you run the shell from the directory containing monte_carlo
+    // I hardcoded this because you said so...
     char home_dir[1024];
     if (getcwd(home_dir, sizeof(home_dir)) == NULL) {
         perror("uinxsh init failed");
         return 1;
     }
-    // -----------------------------------------------
 
     while (should_run) {
         // ZOMBIE CLEANUP
@@ -53,6 +51,7 @@ int main(void) {
         int i = 0;
         char *token = strtok(input_buffer, " ");
         while (token != NULL) {
+            if (i >= MAX_LINE/2) break; // PREVENT OVERFLOW
             args[i++] = token;
             token = strtok(NULL, " ");
         }
@@ -64,8 +63,8 @@ int main(void) {
         int background = 0;
         if (i > 0 && strcmp(args[i-1], "&") == 0) {
             background = 1;
-            args[i-1] = NULL; // remove & from args
-            i--; // decrement count
+            args[i-1] = NULL;
+            i--;
         }
 
         // CHECK FOR (|)
@@ -104,7 +103,7 @@ int main(void) {
         }
 
         if (pipe_idx != -1) {
-            // pipe logic (unchanged for monte_carlo special case per instruction)
+            // pipe logic
             args[pipe_idx] = NULL;
 
             int pipe_arg_count = 0;
@@ -163,24 +162,23 @@ int main(void) {
             }
             else if (pid == 0) {
 
-                // I hardcoded this because...well, I asked you all
-                if (strcmp(args[0], "monte_carlo") == 0) {
-                    // switch child process to the directory where main.c/monte_carlo lives
+                // I hardcoded this because you all said so
+                if (strcmp(args[0], "monte_carlo") == 0 || strcmp(args[0], "sudoku") == 0) {
+                    // switch child process to the directory where main.c lives
                     if (chdir(home_dir) != 0) {
                         perror("Failed to switch to project dir");
                         exit(1);
                     }
 
-                    // explicitly tell execvp to look in current directory "./"
+                    // tell execvp to look in current directory
                     char cmd_path[MAX_LINE + 50];
                     snprintf(cmd_path, sizeof(cmd_path), "./%s", args[0]);
 
                     if (execvp(cmd_path, args) == -1) {
-                        perror("monte_carlo hardcoded exec failed");
+                        perror("External module execution failed");
                         exit(1);
                     }
                 }
-
 
                 if (execvp(args[0], args) == -1) {
                     printf("Command not found: %s\n", args[0]);
