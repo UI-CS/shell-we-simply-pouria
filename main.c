@@ -9,14 +9,23 @@
 
 int main(void) {
     char *args[MAX_LINE/2 + 1];
-    char *args_pipe[MAX_LINE/2 + 1]; // args for the second command in a pipe
+    char *args_pipe[MAX_LINE/2 + 1];
     char input_buffer[MAX_LINE];
     char history_buffer[MAX_LINE];
     int has_history = 0;
     int should_run = 1;
 
+    // --- HARDCODE FIX: Capture startup directory ---
+    // We assume you run the shell from the directory containing monte_carlo
+    char home_dir[1024];
+    if (getcwd(home_dir, sizeof(home_dir)) == NULL) {
+        perror("uinxsh init failed");
+        return 1;
+    }
+    // -----------------------------------------------
+
     while (should_run) {
-        // ZOMBIE CLEANUP: Reap background processes that finished
+        // ZOMBIE CLEANUP
         while (waitpid(-1, NULL, WNOHANG) > 0);
 
         printf("uinxsh> ");
@@ -68,9 +77,6 @@ int main(void) {
             }
         }
 
-
-
-
         if (strcmp(args[0], "exit") == 0) {
             should_run = 0;
             continue;
@@ -97,14 +103,9 @@ int main(void) {
             continue;
         }
 
-
-
-
-
         if (pipe_idx != -1) {
-            // pipe
+            // pipe logic (unchanged for monte_carlo special case per instruction)
             args[pipe_idx] = NULL;
-
 
             int pipe_arg_count = 0;
             for(int j = pipe_idx + 1; args[j] != NULL; j++) {
@@ -161,6 +162,26 @@ int main(void) {
                 perror("Fork failed");
             }
             else if (pid == 0) {
+
+                // I hardcoded this because...well, I asked you all
+                if (strcmp(args[0], "monte_carlo") == 0) {
+                    // switch child process to the directory where main.c/monte_carlo lives
+                    if (chdir(home_dir) != 0) {
+                        perror("Failed to switch to project dir");
+                        exit(1);
+                    }
+
+                    // explicitly tell execvp to look in current directory "./"
+                    char cmd_path[MAX_LINE + 50];
+                    snprintf(cmd_path, sizeof(cmd_path), "./%s", args[0]);
+
+                    if (execvp(cmd_path, args) == -1) {
+                        perror("monte_carlo hardcoded exec failed");
+                        exit(1);
+                    }
+                }
+
+
                 if (execvp(args[0], args) == -1) {
                     printf("Command not found: %s\n", args[0]);
                     exit(1);
