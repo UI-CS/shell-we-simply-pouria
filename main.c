@@ -102,6 +102,26 @@ int main(void) {
             continue;
         }
 
+
+        // help
+        if (strcmp(args[0], "help") == 0) {
+            printf("uinxsh built-in commands:\n");
+            printf("  cd <path> : Change directory\n");
+            printf("  pwd       : Print working directory\n");
+            printf("  exit      : Exit the shell\n");
+            printf("  help      : Show this help message\n");
+            continue;
+        }
+
+        // echo
+        if (strcmp(args[0], "echo") == 0) {
+            for (int k = 1; args[k] != NULL; k++) {
+                printf("%s ", args[k]);
+            }
+            printf("\n");
+            continue;
+        }
+
         if (pipe_idx != -1) {
             // pipe logic
             args[pipe_idx] = NULL;
